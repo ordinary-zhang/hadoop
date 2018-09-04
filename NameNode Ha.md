@@ -26,15 +26,20 @@ hadoop2中的高可靠性是指同时启动NameNode,其中一个处于工作状�
 </br>
 社区的NN HA包括两个NN，主（active）与备（standby），ZKFC，ZK，share editlog。流程：集群启动后一个NN处于active状态，并提供服务，处理客户端和datanode的请求，并把editlog写到本地和share editlog（可以是NFS，QJM等）中。另外一个NN处于Standby状态，它启动的时候加载fsimage，然后周期性的从share editlog中获取editlog，保持与active的状态同步。为了实现standby在active挂掉后迅速提供服务，需要DN同时向两个NN汇报，使得Stadnby保存block to datanode信息，因为NN启动中最费时的工作是处理所有datanode的blockreport。为了实现热备，增加FailoverController和ZK，FailoverController与ZK通信，通过ZK选主，FailoverController通过RPC让NN转换为active或standby。
 </br>
+
 2. 关键问题：
-- 保持NN的状态同步，通过standby周期性获取editlog，DN同时想standby发送blockreport。</br>
-- 防止脑裂</br>
+    (1)保持NN的状态同步，通过standby周期性获取editlog，DN同时想standby发送blockreport。</br>
+    (2)防止脑裂</br>
   共享存储的fencing，确保只有一个NN能写成功。使用QJM实现fencing，下文叙述原理。</br>
   datanode的fencing。确保只有一个NN能命令DN。HDFS-1972中详细描述了DN如何实现fencing</br>
   (a) 每个NN改变状态的时候，向DN发送自己的状态和一个序列号。</br>
+  
   (b) DN在运行过程中维护此序列号，当failover时，新的NN在返回DN心跳时会返回自己的active状态和一个更大的序列号。DN接收到这个返回是认为该NN为新的active。</br>
+  
   (c) 如果这时原来的active（比如GC）恢复，返回给DN的心跳信息包含active状态和原来的序列号，这时DN就会拒绝这个NN的命令。</br>
+  
   (d) 特别需要注意的一点是，上述实现还不够完善，HDFS-1972中还解决了一些有可能导致误删除block的隐患，在failover后，active在DN汇报所有删除报告前不应该删除任何block。</br>
+  
    客户端fencing，确保只有一个NN能响应客户端请求。让访问standby nn的客户端直接失败。在RPC层封装了一层，通过FailoverProxyProvider以重试的方式连接NN。通过若干次连接一个NN失败后尝试连接新的NN，对客户端的影响是重试的时候增加一定的延迟。客户端可以设置重试此时和时间。</br>
 
 ### 6.ZKFC的设计
