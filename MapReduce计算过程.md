@@ -58,4 +58,4 @@ MapReduce提供Partitioner接口，它的作用就是根据key或value及reduce�
 3. Reducer的输入文件。不断地merge后，最后会生成一个“最终文件”。为什么加引号？因为这个文件可能存在于磁盘上，也可能存在于内存中。对我们来说，当然希望它存放于内存中，直接作为Reducer的输入，但默认情况下，这个文件是存放于磁盘中的。至于怎样才能让这个文件出现在内存中，之后的性能优化篇我再说。当Reducer的输入文件已定，整个Shuffle才最终结束。然后就是Reducer执行，把结果放到HDFS上。 
 
 
-![参考博客](http://langyu.iteye.com/blog/992916?page=2#comments)
+![参考博客](http://langyu.iteye.com/blog/992916)
