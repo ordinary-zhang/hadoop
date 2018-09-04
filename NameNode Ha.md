@@ -37,7 +37,7 @@ hadoop2中的高可靠性是指同时启动NameNode,其中一个处于工作状�
    客户端fencing，确保只有一个NN能响应客户端请求。让访问standby nn的客户端直接失败。在RPC层封装了一层，通过FailoverProxyProvider以重试的方式连接NN。通过若干次连接一个NN失败后尝试连接新的NN，对客户端的影响是重试的时候增加一定的延迟。客户端可以设置重试此时和时间。</br>
 ### 6.ZKFC的设计
 </br>
-![fc](https://github.com/ordinary-zhang/Hadoop/blob/master/%E5%9B%BE%E7%89%87/fc.PNG)
+![qjm](https://github.com/ordinary-zhang/Hadoop/blob/master/%E5%9B%BE%E7%89%87/fc.PNG)
 </br>
 1. FailoverController实现下述几个功能</br>
   (a) 监控NN的健康状态</br>
@@ -57,24 +57,30 @@ Namenode记录了HDFS的目录文件等元数据，客户端每次对文件的�
 
 ![qjm](https://github.com/ordinary-zhang/Hadoop/blob/master/%E5%9B%BE%E7%89%87/qjm.PNG)
 </br>
-实现过程： 
-(1) 初始化后，Active把editlog日志写到2N+1上JN上，每个editlog有一个编号，每次写editlog只要其中大多数JN返回成功（即大于等于N+1）即认定写成功。</br>
-(2) Standby定期从JN读取一批editlog，并应用到内存中的FsImage中。</br>
-(3) 如何fencing： NameNode每次写Editlog都需要传递一个编号Epoch给JN，JN会对比Epoch，如果比自己保存的Epoch大或相同，则可以写，JN更新自己的Epoch到最新，否则拒绝操作。在切换时，Standby转换为Active时，会把Epoch+1，这样就防止即使之前的NameNode向JN写日志，也会失败。</br>
-(4) 写日志：</br>
+实现过程： </br>
+1. 初始化后，Active把editlog日志写到2N+1上JN上，每个editlog有一个编号，每次写editlog只要其中大多数JN返回成功（即大于等于N+1）即认定写成功。</br>
+
+2. Standby定期从JN读取一批editlog，并应用到内存中的FsImage中。</br>
+
+3. 如何fencing： NameNode每次写Editlog都需要传递一个编号Epoch给JN，JN会对比Epoch，如果比自己保存的Epoch大或相同，则可以写，JN更新自己的Epoch到最新，否则拒绝操作。在切换时，Standby转换为Active时，会把Epoch+1，这样就防止即使之前的NameNode向JN写日志，也会失败。</br>
+
+4. 写日志：</br>
   (a) NN通过RPC向N个JN异步写Editlog，当有N/2+1个写成功，则本次写成功。</br>
   (b) 写失败的JN下次不再写，直到调用滚动日志操作，若此时JN恢复正常，则继续向其写日志。</br>
   (c) 每条editlog都有一个编号txid，NN写日志要保证txid是连续的，JN在接收写日志时，会检查txid是否与上次连续，否则写失败。</br>
-(5) 读日志：</br>
+
+5. 读日志：</br>
   (a) 定期遍历所有JN，获取未消化的editlog，按照txid排序。</br>
   (b) 根据txid消化editlog。</br>
-(6) 切换时日志恢复机制</br>
+
+6. 切换时日志恢复机制</br>
   (a) 主从切换时触发</br>
   (b) 准备恢复（prepareRecovery），standby向JN发送RPC请求，获取txid信息，并对选出最好的JN。</br>
   (c) 接受恢复（acceptRecovery），standby向JN发送RPC，JN之间同步Editlog日志。</br>
   (d) Finalized日志。即关闭当前editlog输出流时或滚动日志时的操作。</br>
   (e) Standby同步editlog到最新</br>
-(7) 如何选取最好的JN</br>
+
+7. 如何选取最好的JN</br>
   (a) 有Finalized的不用in-progress</br>
   (b) 多个Finalized的需要判断txid是否相等</br>
   (c) 没有Finalized的首先看谁的epoch更大</br>
